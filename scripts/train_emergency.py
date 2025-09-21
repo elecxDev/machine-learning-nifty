@@ -215,14 +215,31 @@ def main():
     
     print(f"\nModel parameters: {sum(p.numel() for p in model.parameters()):,}")
     
-    # Ask for training time
-    print("\n⏰ How many hours to train?")
-    print("   Recommended: 2-4 hours for emergency model")
+    # Training options
+    print("\n🎯 EMERGENCY TRAINING OPTIONS:")
+    print("   [1] Quick Demo Model (30 minutes, basic functionality)")
+    print("   [2] Full Emergency Model (2-4 hours, presentation ready)")
+    print("   [3] Let me specify hours manually")
+    
     try:
-        hours = float(input("Hours: "))
+        choice = input("Choose option (1/2/3): ").strip()
+        
+        if choice == '1':
+            hours = 0.5  # 30 minutes
+            print("🏃‍♂️ Quick demo model selected (30 minutes)")
+        elif choice == '2':
+            hours = 4  # 4 hours for full model
+            print("🎓 Full emergency model selected (4 hours)")
+        elif choice == '3':
+            hours = float(input("Enter hours: "))
+            print(f"⏱️ Custom training time: {hours} hours")
+        else:
+            hours = 4  # Default to full model
+            print("📝 Using default: Full emergency model (4 hours)")
+            
     except:
-        hours = 2
-        print(f"Using default: {hours} hours")
+        hours = 4  # Default to full model
+        print("📝 Using default: Full emergency model (4 hours)")
     
     # Train
     trained_model, history = emergency_training_loop(model, data, config, device, hours)

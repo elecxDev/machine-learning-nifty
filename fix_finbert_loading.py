@@ -187,15 +187,26 @@ def create_patched_training_script():
     print("\n🩹 CREATING PATCHED TRAINING SCRIPT")
     print("=" * 50)
     
-    # Read the original training script
-    original_script = os.path.join(os.path.dirname(__file__), 'scripts', 'train_full_model.py')
+    # Get the correct path to the training script
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    original_script = os.path.join(project_root, 'scripts', 'train_full_model.py')
     
     if not os.path.exists(original_script):
-        print("❌ Original training script not found")
+        print(f"❌ Original training script not found at: {original_script}")
+        print("Available scripts:")
+        scripts_dir = os.path.join(project_root, 'scripts')
+        if os.path.exists(scripts_dir):
+            for file in os.listdir(scripts_dir):
+                if file.endswith('.py'):
+                    print(f"  - {file}")
         return None
     
-    with open(original_script, 'r') as f:
-        content = f.read()
+    try:
+        with open(original_script, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except Exception as e:
+        print(f"❌ Failed to read original script: {e}")
+        return None
     
     # Patch the FinBERT loading section
     patched_content = content.replace(
@@ -214,26 +225,40 @@ warnings.filterwarnings('ignore')"""
     patched_content = patched_content.replace(
         "self.tokenizer = AutoTokenizer.from_pretrained('ProsusAI/finbert')",
         """try:
+            print("🔒 Attempting safe FinBERT tokenizer loading...")
             self.tokenizer = AutoTokenizer.from_pretrained('ProsusAI/finbert', use_safetensors=True)
-        except:
+            print("✅ Tokenizer loaded with safetensors")
+        except Exception as e:
+            print(f"⚠️  Safetensors failed ({e}), trying standard loading...")
             self.tokenizer = AutoTokenizer.from_pretrained('ProsusAI/finbert')"""
     )
     
     patched_content = patched_content.replace(
         "self.text_model = AutoModel.from_pretrained('ProsusAI/finbert')",
         """try:
+            print("🔒 Attempting safe FinBERT model loading...")
             self.text_model = AutoModel.from_pretrained('ProsusAI/finbert', use_safetensors=True)
-        except:
-            self.text_model = AutoModel.from_pretrained('ProsusAI/finbert')"""
+            print("✅ Model loaded with safetensors")
+        except Exception as e:
+            print(f"⚠️  Safetensors failed ({e}), trying standard loading...")
+            try:
+                self.text_model = AutoModel.from_pretrained('ProsusAI/finbert')
+            except Exception as e2:
+                print(f"❌ FinBERT loading completely failed: {e2}")
+                print("🆘 Falling back to emergency mode without text analysis")
+                self.text_model = None"""
     )
     
     # Save patched script
-    patched_script = os.path.join(os.path.dirname(__file__), 'scripts', 'train_full_model_safe.py')
-    with open(patched_script, 'w') as f:
-        f.write(patched_content)
-    
-    print(f"✅ Patched script created: {patched_script}")
-    return patched_script
+    patched_script = os.path.join(project_root, 'scripts', 'train_full_model_safe.py')
+    try:
+        with open(patched_script, 'w', encoding='utf-8') as f:
+            f.write(patched_content)
+        print(f"✅ Patched script created: {patched_script}")
+        return patched_script
+    except Exception as e:
+        print(f"❌ Failed to create patched script: {e}")
+        return None
 
 def main():
     print("🔧 FINBERT LOADING COMPREHENSIVE FIX")
@@ -264,22 +289,31 @@ def main():
     patched_script = create_patched_training_script()
     
     print(f"""
-    🎯 FINBERT FIX COMPLETED
+    🎯 FINBERT FIX RESULTS
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     
-    Options to try:
+    RECOMMENDED SOLUTIONS (in order of reliability):
     
-    1. 🚀 Use patched training script:
-       python scripts/train_full_model_safe.py
-    
-    2. 🆘 Use emergency training (no FinBERT):
+    1. 🆘 EMERGENCY TRAINING (Most Reliable):
        python scripts/train_emergency.py
+       • Bypasses FinBERT completely
+       • Uses RTX 4060 GPU acceleration
+       • 2-4 hours training time
+       • Perfect for tomorrow's presentation
     
-    3. 💡 Try manual model download:
-       python -c "from transformers import pipeline; pipeline('sentiment-analysis', model='ProsusAI/finbert')"
+    2. 🔧 Try Manual PyTorch 2.6+ Install:
+       pip uninstall torch torchvision torchaudio
+       pip install torch==2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+       python scripts/train_full_model.py
+    
+    3. 💡 Force Safetensors Download:
+       python -c "from transformers import pipeline; pipeline('sentiment-analysis', model='ProsusAI/finbert', use_safetensors=True)"
        
-    If all else fails, the emergency training will give you a working model!
+    ⚠️  The patched script may not work reliably due to the PyTorch security issue.
+    Emergency training is your best bet for a working model by tomorrow!
     """)
+    
+    return True
 
 if __name__ == "__main__":
     main()
