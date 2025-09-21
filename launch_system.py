@@ -72,9 +72,11 @@ def print_options():
 def check_model_exists():
     """Check if trained model exists"""
     model_paths = [
-        "models/fast_transformer.pth",     # Fast trained model
-        "models/unified_transformer.pth",
-        "models/demo_transformer.pth",     # Include demo model
+        "models/mac_optimized_transformer.pth",  # Mac-optimized model
+        "models/fast_transformer.pth",           # Fast trained model
+        "models/unified_transformer.pth",        # Original full model
+        "models/demo_transformer.pth",           # Demo model
+        "models/lightning_transformer.pth",      # Lightning model
         "checkpoints/best_model.pth", 
         "saved_models/transformer.pth"
     ]
@@ -164,7 +166,7 @@ def run_ml_mode():
         print(f"❌ Error running ML mode: {e}")
 
 def run_training_mode():
-    """Full training pipeline with fast and full options"""
+    """Full training pipeline with fast, full, and Mac-optimized options"""
     print("""
     🎓 TRAINING MODE OPTIONS
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -190,9 +192,18 @@ def run_training_mode():
     │ • Full research-grade capabilities                        │
     │ ⏱️ Time: 50-100+ hours (very slow on laptop)             │
     └────────────────────────────────────────────────────────────┘
+    
+    🍎 [C] MAC-OPTIMIZED TRAINING (For M1/M2 MacBooks)
+    ┌────────────────────────────────────────────────────────────┐
+    │ • Full 19.6M parameter model with Mac acceleration        │
+    │ • Metal Performance Shaders (MPS) support                │
+    │ • CoreML integration for deployment                       │
+    │ • Resumes from existing checkpoints                       │
+    │ • Optimized memory management for Apple Silicon           │
+    └────────────────────────────────────────────────────────────┘
     """)
     
-    choice = input("Choose [A] Fast or [B] Full training: ").strip().upper()
+    choice = input("Choose [A] Fast, [B] Full, or [C] Mac training: ").strip().upper()
     
     if choice == 'A':
         print("""
@@ -256,8 +267,89 @@ def run_training_mode():
         except subprocess.CalledProcessError as e:
             print(f"❌ Full training failed: {e}")
     
+    elif choice == 'C':
+        print("""
+    🍎 LAUNCHING MAC-OPTIMIZED TRAINING
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    Apple Silicon optimizations:
+    🚀 Metal Performance Shaders (MPS) acceleration
+    🚀 Optimized memory management for M1/M2
+    🚀 Automatic checkpoint resumption
+    🚀 CoreML conversion support
+    🚀 Full 19.6M parameter model
+    
+    Perfect for: M1/M2 MacBooks, much faster training!
+    """)
+        
+        # Check for existing checkpoints
+        checkpoint_dir = "checkpoints"
+        has_checkpoint = False
+        checkpoint_info = ""
+        
+        if os.path.exists(checkpoint_dir):
+            checkpoints = [f for f in os.listdir(checkpoint_dir) if f.startswith('checkpoint_epoch_')]
+            if checkpoints:
+                has_checkpoint = True
+                latest_checkpoint = max(checkpoints, key=lambda x: int(x.split('_')[-1].split('.')[0]))
+                epoch_num = int(latest_checkpoint.split('_')[-1].split('.')[0])
+                checkpoint_info = f"""
+    🔍 EXISTING CHECKPOINT DETECTED!
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    Found checkpoint at epoch {epoch_num}
+    Mac training can resume from your existing progress!
+    
+    ✅ Will automatically resume from epoch {epoch_num + 1}
+    ✅ No progress lost from previous training
+    ✅ Mac optimizations applied from resume point
+                """
+        
+        if not has_checkpoint:
+            checkpoint_info = f"""
+    📁 NO CHECKPOINTS FOUND
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    This is normal for:
+    • Fresh repository clones (checkpoints not in git)
+    • First-time training
+    • New installations
+    
+    ✅ Training will start from epoch 1
+    ✅ Checkpoints will be created automatically
+    ✅ Can resume if training is interrupted
+            """
+        
+        print(checkpoint_info)
+        
+        confirm = input("\n🍎 Start Mac-optimized training? (y/N): ").strip().lower()
+        if confirm != 'y':
+            print("❌ Mac training cancelled")
+            return
+        
+        try:
+            import subprocess
+            result = subprocess.run([
+                sys.executable, 
+                os.path.join(os.getcwd(), "scripts", "train_mac.py")
+            ], check=True)
+            
+            print("✅ Mac-optimized training completed successfully!")
+            
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Mac training failed: {e}")
+            print("""
+    🔧 MAC TROUBLESHOOTING TIPS:
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    1. Ensure you're on macOS with M1/M2 chip
+    2. Install PyTorch with MPS support:
+       pip install torch torchvision torchaudio
+    3. For CoreML: pip install coremltools
+    4. Close other memory-intensive applications
+    5. Ensure macOS is updated to latest version
+            """)
+    
     else:
-        print("❌ Invalid choice. Please choose A or B.")
+        print("❌ Invalid choice. Please choose A, B, or C.")
         return
     
     print("""
