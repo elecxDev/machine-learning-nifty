@@ -43,11 +43,12 @@ def print_options():
     
     🎓 TRAINING MODE - Full ML Pipeline
     ┌────────────────────────────────────────────────────────────┐
-    │ [3] Train New Model (Full Pipeline)                       │
-    │     • Download 4+ years historical data                   │
-    │     • Train 19.6M parameter transformer                   │
-    │     • World Bank + FinBERT integration                    │
-    │     ⏱️ Time: 2-6 hours                                     │
+    │ [3] Train New Model (Choose Type)                         │
+    │     A. 🏃‍♂️ Fast Training (1.7M params, 4-12 hours)        │
+    │     B. 🔋 Full Training (19.6M params, 2-6 hours)         │
+    │     C. 🍎 Mac-Optimized (M1/M2 acceleration)              │
+    │     D. 🆘 Emergency Training (bypass FinBERT issues)      │
+    │     ⏱️ Time: 2-12 hours depending on choice               │
     └────────────────────────────────────────────────────────────┘
     
     🌟 FULL STACK - Production System
