@@ -13,12 +13,42 @@ import os
 import sys
 import pickle
 from pathlib import Path
+# import ssl
 
-# Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+# # SSL Certificate fix for corporate networks and certificate issues
+# ssl._create_default_https_context = ssl._create_unverified_context
+# os.environ['CURL_CA_BUNDLE'] = ''
+# os.environ['REQUESTS_CA_BUNDLE'] = ''
 
-from src.models.unified_transformer import UnifiedMultimodalTransformer, ModelConfig
-from src.training.trainer import FinancialTrainer
+# # Disable SSL warnings
+# try:
+#     import urllib3
+#     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+#     print("✅ SSL warnings disabled")
+# except ImportError:
+#     pass
+
+# Fix Python path imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+src_dir = os.path.join(parent_dir, 'src')
+
+# Add both parent and src directories to path
+sys.path.insert(0, parent_dir)
+sys.path.insert(0, src_dir)
+
+# Now import our modules
+try:
+    from models.unified_transformer import UnifiedMultimodalTransformer, ModelConfig
+    from training.trainer import FinancialTrainer
+    print("✅ Successfully imported ML modules")
+except ImportError as e:
+    print(f"❌ Import error: {e}")
+    print(f"Parent dir: {parent_dir}")
+    print(f"Src dir: {src_dir}")
+    print(f"Current sys.path: {sys.path[:3]}")
+    sys.exit(1)
+
 from transformers import AutoTokenizer, AutoModel
 
 class HistoricalDataCollector:

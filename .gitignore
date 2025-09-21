@@ -1,0 +1,43 @@
+# Model files and checkpoints
+checkpoints/
+models/
+*.pth
+*.pkl
+*.h5
+*.model
+
+# Data files
+data/
+*.csv
+*.json
+*.parquet
+
+# Cache and temp files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+
+# Logs
+*.log
+logs/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Large data files
+*.zip
+*.tar.gz
+*.rar
