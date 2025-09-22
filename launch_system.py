@@ -124,47 +124,152 @@ def run_demo_mode():
         print(f"❌ Error running demo: {e}")
 
 def run_ml_mode():
-    """Load and run with ML model"""
+    """Enhanced ML mode with model selection"""
     model_exists, model_path = check_model_exists()
     
-    if not model_exists:
-        print("""
-        ❌ NO TRAINED MODEL FOUND
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        No pre-trained model detected. You need to:
-        1. Choose option [3] to train a new model first, OR
-        2. Use option [1] for demo mode instead
-        
-        Training time: 2-6 hours (best to do overnight)
-        """)
-        return
-    
     print(f"""
-    🤖 LAUNCHING ML MODE
+    🤖 ML MODE - MODEL SELECTION
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     
-    Found trained model: {model_path}
-    
-    What you'll get:
-    ✅ 19.6M parameter transformer predictions
-    ✅ Multimodal analysis (Price + Macro + Text)
-    ✅ Cross-market learning capabilities  
-    ✅ Explainable AI with attention mechanisms
-    ✅ World Bank economic indicators
-    ✅ FinBERT sentiment analysis
-    ✅ Advanced anomaly detection
-    
-    Loading model... This may take 2-3 minutes
+    Choose which trained model to use:
     """)
     
-    try:
-        # Modify main_app.py to use ML model
-        print("🔄 Integrating ML model...")
-        # Add integration code here
-        subprocess.run([sys.executable, "-m", "streamlit", "run", "main_app.py"], check=True)
-    except Exception as e:
-        print(f"❌ Error running ML mode: {e}")
+    print("""
+    📦 Available Models:
+    
+    ⚡ [1] Lightning Transformer (268K params)
+    ┌────────────────────────────────────────────────────────────┐
+    │ • Ultra-fast inference (~1-2 seconds)                     │
+    │ • Perfect for quick demos and testing                     │
+    │ • Basic technical analysis capabilities                   │
+    │ • Low memory usage                                        │
+    └────────────────────────────────────────────────────────────┘
+    
+    🚀 [2] Fast Transformer (1.8M params)  
+    ┌────────────────────────────────────────────────────────────┐
+    │ • Fast inference with good accuracy                       │
+    │ • Balanced speed vs performance                           │
+    │ • Multi-modal price + text analysis                      │
+    │ • Recommended for presentations                           │
+    └────────────────────────────────────────────────────────────┘
+    
+    🧠 [3] Mac Optimized Transformer (19.6M params - COMPLETE)
+    ┌────────────────────────────────────────────────────────────┐
+    │ • Full 19.6M parameter model with complete features       │
+    │ • Metal Performance Shaders (MPS) optimized             │
+    │ • Multimodal analysis (Price + Macro + Text)             │
+    │ • World Bank economic indicators                          │
+    │ • FinBERT sentiment analysis                             │
+    │ • PERFECT for full demonstrations                         │
+    └────────────────────────────────────────────────────────────┘
+    
+    🔥 [4] Full 40M Model (No Semantic) 
+    ┌────────────────────────────────────────────────────────────┐
+    │ • Massive 40M parameter transformer                       │
+    │ • Highest accuracy for price predictions                  │
+    │ • Advanced technical analysis                             │
+    │ • Memory intensive but powerful                           │
+    └────────────────────────────────────────────────────────────┘
+    
+    🔧 [5] Demo Transfer Model
+    ┌────────────────────────────────────────────────────────────┐
+    │ • Transfer learning demonstration                          │
+    │ • Educational/research purposes                           │
+    │ • Variable parameters based on base model                │
+    └────────────────────────────────────────────────────────────┘
+    
+    🌐 [6] Unified Transformer
+    ┌────────────────────────────────────────────────────────────┐
+    │ • Multi-market unified model                              │
+    │ • Cross-asset learning capabilities                       │
+    │ • Experimental architecture                               │
+    └────────────────────────────────────────────────────────────┘
+    """)
+    
+    while True:
+        try:
+            model_choice = input("\n🚀 Select model [1-6] or 'b' to go back: ").strip()
+            
+            if model_choice.lower() == 'b':
+                return
+            
+            model_info = {
+                '1': {
+                    'name': 'Lightning Transformer',
+                    'params': '268K',
+                    'script': 'scripts/train_lightning.py',
+                    'description': 'Ultra-fast 268K parameter model'
+                },
+                '2': {
+                    'name': 'Fast Transformer', 
+                    'params': '1.8M',
+                    'script': 'scripts/train_fast.py',
+                    'description': 'Balanced 1.8M parameter model'
+                },
+                '3': {
+                    'name': 'Mac Optimized Transformer',
+                    'params': '19.6M',
+                    'script': 'scripts/train_mac_optimized.py', 
+                    'description': 'Complete 19.6M parameter model with all features'
+                },
+                '4': {
+                    'name': 'Full 40M Model (No Semantic)',
+                    'params': '40M',
+                    'script': 'scripts/train_full_19M.py',
+                    'description': '40M parameter model without semantic features'
+                },
+                '5': {
+                    'name': 'Demo Transfer Model',
+                    'params': 'Variable',
+                    'script': 'scripts/demo_transfer.py',
+                    'description': 'Transfer learning demonstration model'
+                },
+                '6': {
+                    'name': 'Unified Transformer',
+                    'params': 'Variable', 
+                    'script': 'scripts/unified_transformer.py',
+                    'description': 'Multi-market unified model'
+                }
+            }
+            
+            if model_choice in model_info:
+                selected_model = model_info[model_choice]
+                
+                print(f"""
+    ✅ SELECTED: {selected_model['name']}
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    Model Details:
+    • Name: {selected_model['name']}
+    • Parameters: {selected_model['params']}
+    • Description: {selected_model['description']}
+    
+    🚀 Launching Streamlit app with {selected_model['name']}...
+    
+    The model will be loaded automatically when making predictions.
+    This may take 30 seconds to 2 minutes depending on model size.
+    """)
+                
+                # Set environment variable to tell main_app.py which model to use
+                os.environ['SELECTED_MODEL'] = model_choice
+                os.environ['MODEL_NAME'] = selected_model['name']
+                os.environ['MODEL_PARAMS'] = selected_model['params']
+                
+                # Launch Streamlit with selected model
+                try:
+                    subprocess.run([sys.executable, "-m", "streamlit", "run", "main_app.py"], check=True)
+                except Exception as e:
+                    print(f"❌ Error launching app with {selected_model['name']}: {e}")
+                break
+                
+            else:
+                print("❌ Invalid choice. Please select 1-6 or 'b'")
+                
+        except KeyboardInterrupt:
+            print("\n👋 Model selection cancelled")
+            break
+        except Exception as e:
+            print(f"❌ Error: {e}")
 
 def run_training_mode():
     """Full training pipeline with fast, full, and Mac-optimized options"""
