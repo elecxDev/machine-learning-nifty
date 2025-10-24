@@ -109,6 +109,9 @@ def get_stock_news(symbol, company_name=""):
         
         news_items = fetch_news_from_api(symbol, company_name)
         if not news_items:
+            # Retry with forced refresh so transient empty caches do not mask real headlines
+            news_items = fetch_news_from_api(symbol, company_name, force_refresh=True)
+        if not news_items:
             news_items = create_sample_news(symbol, company_name)
             
     except Exception as e:
@@ -117,12 +120,18 @@ def get_stock_news(symbol, company_name=""):
     
     return news_items
 
-@st.cache_data(ttl=900, show_spinner=False)
-def fetch_news_from_api(symbol: str, company_name: str = "", max_items: int = 6):
-    """Fetch recent headlines and FinBERT sentiment from the FastAPI backend."""
+def _request_news_from_backend(
+    symbol: str,
+    company_name: str = "",
+    max_items: int = 6,
+    force_refresh: bool = False,
+) -> list[dict[str, object]]:
+    """Perform the HTTP request to the FastAPI backend."""
     params = {"max_items": max_items}
     if company_name:
         params["company_name"] = company_name
+    if force_refresh:
+        params["force_refresh"] = "true"
 
     try:
         response = requests.get(
@@ -149,6 +158,33 @@ def fetch_news_from_api(symbol: str, company_name: str = "", max_items: int = 6)
         })
 
     return items
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _fetch_news_from_api_cached(
+    symbol: str,
+    company_name: str = "",
+    max_items: int = 6,
+) -> list[dict[str, object]]:
+    """Cached wrapper around the backend news request."""
+    return _request_news_from_backend(symbol, company_name, max_items, force_refresh=False)
+
+
+def fetch_news_from_api(
+    symbol: str,
+    company_name: str = "",
+    max_items: int = 6,
+    force_refresh: bool = False,
+) -> list[dict[str, object]]:
+    """Fetch recent headlines and FinBERT sentiment from the FastAPI backend."""
+    if force_refresh:
+        try:
+            _fetch_news_from_api_cached.clear()
+        except Exception:
+            pass
+        return _request_news_from_backend(symbol, company_name, max_items, force_refresh=True)
+
+    return _fetch_news_from_api_cached(symbol, company_name, max_items)
 
 def create_sample_news(symbol, company_name):
     """Create sample news items for demo purposes"""
