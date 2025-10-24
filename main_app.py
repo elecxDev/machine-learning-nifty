@@ -13,12 +13,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import requests
-import json
-import time
 import warnings
-import feedparser
-import re
-from textblob import TextBlob
 warnings.filterwarnings('ignore')
 
 # Currency and Market Support
@@ -37,6 +32,8 @@ CURRENCY_SYMBOLS = {
     'USD': '$', 'INR': '₹', 'BRL': 'R$', 'GBP': '£', 
     'EUR': '€', 'CAD': 'C$', 'HKD': 'HK$', 'JPY': '¥'
 }
+
+API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8000')
 
 def detect_market_currency(symbol):
     """Detect currency for stock symbol"""
@@ -98,7 +95,6 @@ def create_market_badge(symbol):
         return f"📊 INDEX • {currency}"
     else:
         return f"🇺🇸 US • {currency}"
-
 # News Analysis Functions
 def get_stock_news(symbol, company_name=""):
     """Get recent news for a stock with sentiment analysis"""
@@ -111,29 +107,48 @@ def get_stock_news(symbol, company_name=""):
             info = ticker.info
             company_name = info.get('shortName', symbol)
         
-        # Create sample news for demo (since live RSS feeds might be limited)
-        news_items = create_sample_news(symbol, company_name)
+        news_items = fetch_news_from_api(symbol, company_name)
+        if not news_items:
+            news_items = create_sample_news(symbol, company_name)
             
     except Exception as e:
         # Fallback to sample news
-        news_items = create_sample_news(symbol, company_name)
+        news_items = create_sample_news(symbol, company_name or symbol)
     
     return news_items
 
-def analyze_sentiment(text):
-    """Analyze sentiment of text"""
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_news_from_api(symbol: str, company_name: str = "", max_items: int = 6):
+    """Fetch recent headlines and FinBERT sentiment from the FastAPI backend."""
+    params = {"max_items": max_items}
+    if company_name:
+        params["company_name"] = company_name
+
     try:
-        blob = TextBlob(text)
-        polarity = blob.sentiment.polarity
-        
-        if polarity > 0.1:
-            return {'label': 'Positive', 'score': polarity, 'emoji': '📈'}
-        elif polarity < -0.1:
-            return {'label': 'Negative', 'score': polarity, 'emoji': '📉'}
-        else:
-            return {'label': 'Neutral', 'score': polarity, 'emoji': '➡️'}
-    except:
-        return {'label': 'Neutral', 'score': 0.0, 'emoji': '➡️'}
+        response = requests.get(
+            f"{API_BASE_URL}/news/{symbol}",
+            params=params,
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        return []
+
+    items = []
+    for entry in payload:
+        label = (entry.get('sentiment_label') or 'neutral').lower()
+        score = float(entry.get('sentiment_score', 0.0))
+        emoji = '📈' if label == 'positive' else '📉' if label == 'negative' else '➡️'
+        items.append({
+            'title': entry.get('title', ''),
+            'summary': entry.get('summary', ''),
+            'sentiment': {'label': label, 'score': score, 'emoji': emoji},
+            'published': entry.get('published'),
+            'link': entry.get('link', ''),
+        })
+
+    return items
 
 def create_sample_news(symbol, company_name):
     """Create sample news items for demo purposes"""
@@ -155,12 +170,12 @@ def create_sample_news(symbol, company_name):
             {
                 'title': f"{company_name} Surges on Strong Quarterly Results",
                 'summary': f"Shares of {company_name} ({symbol}) gained {price_change:.1f}% following better-than-expected earnings and positive guidance.",
-                'sentiment': {'label': 'Positive', 'score': 0.6, 'emoji': '📈'}
+                'sentiment': {'label': 'positive', 'score': 0.6, 'emoji': '📈'}
             },
             {
                 'title': f"Analysts Raise Price Target for {company_name}",
                 'summary': f"Multiple analysts upgraded their outlook on {symbol} citing strong fundamentals and market position.",
-                'sentiment': {'label': 'Positive', 'score': 0.4, 'emoji': '📈'}
+                'sentiment': {'label': 'positive', 'score': 0.4, 'emoji': '📈'}
             }
         ]
     elif price_change < -2:
@@ -168,12 +183,12 @@ def create_sample_news(symbol, company_name):
             {
                 'title': f"{company_name} Faces Market Headwinds",
                 'summary': f"Shares of {company_name} ({symbol}) declined {abs(price_change):.1f}% amid broader market concerns and sector rotation.",
-                'sentiment': {'label': 'Negative', 'score': -0.4, 'emoji': '📉'}
+                'sentiment': {'label': 'negative', 'score': -0.4, 'emoji': '📉'}
             },
             {
                 'title': f"Market Volatility Impacts {company_name} Trading",
                 'summary': f"Investors show caution around {symbol} following recent market developments and economic indicators.",
-                'sentiment': {'label': 'Negative', 'score': -0.3, 'emoji': '📉'}
+                'sentiment': {'label': 'negative', 'score': -0.3, 'emoji': '📉'}
             }
         ]
     else:
@@ -181,12 +196,12 @@ def create_sample_news(symbol, company_name):
             {
                 'title': f"{company_name} Maintains Steady Performance",
                 'summary': f"{symbol} shows resilient trading patterns amid mixed market signals and continues operational strength.",
-                'sentiment': {'label': 'Neutral', 'score': 0.1, 'emoji': '➡️'}
+                'sentiment': {'label': 'neutral', 'score': 0.1, 'emoji': '➡️'}
             },
             {
                 'title': f"Market Update: {company_name} in Focus",
                 'summary': f"Trading activity for {symbol} remains within expected ranges as institutional interest continues.",
-                'sentiment': {'label': 'Neutral', 'score': 0.0, 'emoji': '➡️'}
+                'sentiment': {'label': 'neutral', 'score': 0.0, 'emoji': '➡️'}
             }
         ]
     
@@ -2243,7 +2258,12 @@ def render_main_stock_selection():
                 <span style="margin-left: 8px; font-weight: 600; color: var(--label-primary);">Search by company name or stock symbol</span>
             </div>
             """, unsafe_allow_html=True)
-            search_term = st.text_input("", placeholder="e.g., Apple, AAPL, Microsoft, MSFT", key="main_search")
+            search_term = st.text_input(
+                "Search stocks",
+                placeholder="e.g., Apple, AAPL, Microsoft, MSFT",
+                key="main_search",
+                label_visibility="collapsed",
+            )
             
             if search_term:
                 # Simple search logic
@@ -2279,7 +2299,12 @@ def render_main_stock_selection():
                 <span style="margin-left: 8px; font-weight: 600; color: var(--label-primary);">Enter a stock symbol directly</span>
             </div>
             """, unsafe_allow_html=True)
-            selected_symbol = st.text_input("", placeholder="e.g., AAPL, TSLA, NVDA", key="custom_symbol")
+            selected_symbol = st.text_input(
+                "Custom symbol",
+                placeholder="e.g., AAPL, TSLA, NVDA",
+                key="custom_symbol",
+                label_visibility="collapsed",
+            )
             if selected_symbol:
                 st.markdown(f"""
                 <div style="padding: 12px; background: rgba(48, 209, 88, 0.1); border: 1px solid rgba(48, 209, 88, 0.2); border-radius: 8px; display: flex; align-items: center;">
@@ -2868,8 +2893,10 @@ def render_stock_analysis(symbol, period, forecast_days, risk_tolerance):
         # News cards
         for idx, item in enumerate(news_items[:3]):  # Show top 3 news items
             sentiment = item['sentiment']
-            sentiment_color = '#30D158' if sentiment['label'] == 'positive' else '#FF453A' if sentiment['label'] == 'negative' else '#FF9F0A'
-            sentiment_emoji = '📈' if sentiment['label'] == 'positive' else '📉' if sentiment['label'] == 'negative' else '➡️'
+            sentiment_label = sentiment.get('label', 'neutral')
+            sentiment_color = '#30D158' if sentiment_label == 'positive' else '#FF453A' if sentiment_label == 'negative' else '#FF9F0A'
+            sentiment_emoji = '📈' if sentiment_label == 'positive' else '📉' if sentiment_label == 'negative' else '➡️'
+            sentiment_badge = sentiment_label.upper()
             
             st.markdown(f"""
             <div class="apple-card" style="margin-bottom: 16px;">
@@ -2887,7 +2914,7 @@ def render_stock_analysis(symbol, period, forecast_days, risk_tolerance):
                             {sentiment_emoji}
                         </div>
                         <div style="color: {sentiment_color}; font-size: 12px; font-weight: 600; text-transform: uppercase;">
-                            {sentiment['label']}
+                            {sentiment_badge}
                         </div>
                         <div style="color: var(--label-secondary); font-size: 11px;">
                             {sentiment['score']:.2f}

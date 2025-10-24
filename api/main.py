@@ -23,10 +23,14 @@ sys.path.insert(0, os.path.join(current_dir, 'src'))
 
 try:
     from src.models.unified_transformer import UnifiedMultimodalTransformer, ModelConfig
+    from src.data.macro_fetcher import MacroDataFetcher, load_macro_frame
+    from src.data.news_sentiment import NewsSentimentFetcher
 except ImportError:
     print("Warning: Model not available. Running in demo mode.")
     UnifiedMultimodalTransformer = None
     ModelConfig = None
+    MacroDataFetcher = None
+    NewsSentimentFetcher = None
 
 app = FastAPI(
     title="Unified Multimodal Financial Forecasting API",
@@ -46,6 +50,10 @@ app.add_middleware(
 # Global model instance
 model = None
 config = None
+
+FRED_API_KEY = os.getenv("FRED_API_KEY")
+macro_fetcher = MacroDataFetcher(fred_api_key=FRED_API_KEY) if 'MacroDataFetcher' in globals() else None
+news_fetcher = NewsSentimentFetcher(device='auto') if 'NewsSentimentFetcher' in globals() else None
 
 class PredictionRequest(BaseModel):
     symbol: str
@@ -77,6 +85,15 @@ class MarketOverviewResponse(BaseModel):
     markets: Dict[str, Dict[str, float]]
     top_predictions: List[Dict[str, float]]
     market_sentiment: str
+
+
+class NewsArticle(BaseModel):
+    title: str
+    summary: str
+    sentiment_label: str
+    sentiment_score: float
+    published: str
+    link: Optional[str] = None
 
 def load_model():
     """Load the trained model"""
@@ -128,6 +145,9 @@ def get_real_time_data(symbol: str, days_back: int = 60):
         
         if data.empty:
             raise ValueError(f"No data available for {symbol}")
+
+        if data.index.tz is not None:
+            data.index = data.index.tz_localize(None)
         
         # Add technical indicators
         data = add_technical_indicators(data)
@@ -142,13 +162,16 @@ def add_technical_indicators(df):
     
     # Returns
     df['returns'] = df['Close'].pct_change()
+    df['log_returns'] = np.log(df['Close'] / df['Close'].shift(1))
     
     # Moving averages
     df['sma_5'] = df['Close'].rolling(5).mean()
     df['sma_10'] = df['Close'].rolling(10).mean()
     df['sma_20'] = df['Close'].rolling(20).mean()
+    df['sma_50'] = df['Close'].rolling(50).mean()
     df['ema_12'] = df['Close'].ewm(span=12).mean()
     df['ema_26'] = df['Close'].ewm(span=26).mean()
+    df['ema_50'] = df['Close'].ewm(span=50).mean()
     
     # RSI
     delta = df['Close'].diff()
@@ -177,30 +200,98 @@ def add_technical_indicators(df):
     
     return df.fillna(method='ffill').dropna()
 
-def prepare_model_input(data):
-    """Prepare data for model input"""
-    
-    # Price features
+def _detect_country(symbol: str) -> str:
+    if symbol.endswith('.NS') or symbol.endswith('.BO'):
+        return 'India'
+    if symbol.endswith('.SA'):
+        return 'Brazil'
+    return 'US'
+
+
+def _pad_rows(matrix: np.ndarray, target_len: int) -> np.ndarray:
+    if matrix.shape[0] >= target_len:
+        return matrix[-target_len:]
+    if matrix.shape[0] == 0:
+        return np.zeros((target_len, matrix.shape[1]), dtype=np.float32)
+    pad_rows = target_len - matrix.shape[0]
+    padding = np.repeat(matrix[:1], pad_rows, axis=0)
+    return np.vstack([padding, matrix])
+
+
+def prepare_model_input(symbol: str, data: pd.DataFrame):
+    """Prepare price, macro and text tensors for inference."""
+
+    lookback = 60
     price_features = [
-        'Open', 'High', 'Low', 'Close', 'Volume', 'returns', 'rsi', 'macd',
-        'sma_5', 'sma_10', 'sma_20', 'ema_12', 'ema_26', 'volatility',
-        'bb_width', 'volume_ratio'
+        'Open', 'High', 'Low', 'Close', 'Volume', 'returns', 'log_returns', 'rsi',
+        'macd', 'macd_signal', 'sma_5', 'sma_10', 'sma_20', 'sma_50', 'ema_12',
+        'ema_26', 'ema_50', 'volatility', 'bb_width', 'volume_ratio'
     ]
-    
-    # Get last 60 days
-    price_data = data[price_features].values[-60:]
-    
-    # Macro data (simplified - use random for now)
-    macro_data = np.random.randn(60, 15)
-    
-    # Text data (simplified - use random for now)
-    text_data = np.random.randn(60, 768)
-    
-    # Convert to tensors and add batch dimension
-    price_tensor = torch.tensor(price_data, dtype=torch.float32).unsqueeze(0)
-    macro_tensor = torch.tensor(macro_data, dtype=torch.float32).unsqueeze(0)
-    text_tensor = torch.tensor(text_data, dtype=torch.float32).unsqueeze(0)
-    
+
+    price_matrix = data[price_features].values.astype(np.float32)
+    price_matrix = _pad_rows(price_matrix, lookback)
+
+    macro_matrix = np.zeros((len(data), 0), dtype=np.float32)
+    if macro_fetcher is not None:
+        try:
+            country = _detect_country(symbol)
+            macro_frame = load_macro_frame(
+                country,
+                data.index.min().strftime('%Y-%m-%d'),
+                data.index.max().strftime('%Y-%m-%d'),
+                macro_fetcher,
+            )
+            if not macro_frame.empty:
+                macro_frame = macro_frame.reindex(data.index, method='ffill').fillna(0)
+                macro_matrix = macro_frame.values.astype(np.float32)
+        except Exception as exc:
+            print(f"Macro fetch failed for {symbol}: {exc}")
+            macro_matrix = np.zeros((len(data), 0), dtype=np.float32)
+
+    if macro_matrix.size == 0:
+        macro_matrix = np.zeros((len(data), 15), dtype=np.float32)
+
+    macro_matrix = _pad_rows(macro_matrix, lookback)
+    if macro_matrix.shape[1] > 15:
+        macro_matrix = macro_matrix[:, :15]
+    elif macro_matrix.shape[1] < 15:
+        pad_cols = 15 - macro_matrix.shape[1]
+        macro_matrix = np.hstack([macro_matrix, np.zeros((lookback, pad_cols), dtype=np.float32)])
+
+    default_vec = np.zeros(768, dtype=np.float32)
+    text_vectors: List[np.ndarray] = []
+    embeddings = None
+    if news_fetcher is not None:
+        try:
+            news_frame = news_fetcher.fetch_symbol_sentiment(
+                symbol,
+                data.index.min().to_pydatetime(),
+                data.index.max().to_pydatetime(),
+            )
+            if not news_frame.empty:
+                embeddings = news_frame['embedding']
+        except Exception as exc:
+            print(f"News sentiment fetch failed for {symbol}: {exc}")
+            embeddings = None
+
+    current_vec = default_vec
+    for ts in data.index:
+        if embeddings is not None and ts in embeddings.index and embeddings.loc[ts] is not None:
+            series_vec = embeddings.loc[ts]
+            if not isinstance(series_vec, np.ndarray):
+                series_vec = np.asarray(series_vec, dtype=np.float32)
+            else:
+                series_vec = series_vec.astype(np.float32)
+            current_vec = series_vec
+        text_vectors.append(current_vec)
+
+    text_matrix = np.vstack(text_vectors) if text_vectors else np.zeros((0, 768), dtype=np.float32)
+    text_matrix = _pad_rows(text_matrix, lookback)
+
+    price_tensor = torch.tensor(price_matrix, dtype=torch.float32).unsqueeze(0)
+    macro_tensor = torch.tensor(macro_matrix, dtype=torch.float32).unsqueeze(0)
+    text_tensor = torch.tensor(text_matrix, dtype=torch.float32).unsqueeze(0)
+
     return price_tensor, macro_tensor, text_tensor
 
 @app.on_event("startup")
@@ -242,7 +333,7 @@ async def predict(request: PredictionRequest):
         data = get_real_time_data(request.symbol, request.days_back)
         
         # Prepare model input
-        price_tensor, macro_tensor, text_tensor = prepare_model_input(data)
+        price_tensor, macro_tensor, text_tensor = prepare_model_input(request.symbol, data)
         
         # Make prediction
         with torch.no_grad():
@@ -314,7 +405,7 @@ async def explain_prediction(request: ExplainabilityRequest):
     try:
         # Get data and make prediction with attention
         data = get_real_time_data(request.symbol, 60)
-        price_tensor, macro_tensor, text_tensor = prepare_model_input(data)
+        price_tensor, macro_tensor, text_tensor = prepare_model_input(request.symbol, data)
         
         with torch.no_grad():
             outputs = model(price_tensor, macro_tensor, text_tensor, return_attention=True)
@@ -355,6 +446,70 @@ async def explain_prediction(request: ExplainabilityRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Explanation failed: {str(e)}")
+
+
+@app.get("/news/{symbol}", response_model=List[NewsArticle])
+async def get_news_sentiment(
+    symbol: str,
+    max_items: int = 6,
+    days: int = 7,
+    company_name: Optional[str] = None,
+    force_refresh: bool = False,
+):
+    """Fetch recent headlines with FinBERT sentiment for a symbol."""
+
+    if news_fetcher is None:
+        raise HTTPException(status_code=503, detail="News sentiment service unavailable")
+
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=days)
+
+    keywords = {symbol.upper(), symbol.split('.')[0].upper()}
+    if company_name:
+        keywords.add(company_name)
+        keywords.update(part.strip() for part in company_name.replace(',', '').split())
+
+    try:
+        articles = news_fetcher.fetch_headline_details(
+            symbol,
+            start_dt,
+            end_dt,
+            max_items=max_items,
+            force_refresh=force_refresh,
+            keywords=keywords,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"News fetch failed: {str(exc)}")
+
+    results: List[NewsArticle] = []
+    for article in articles:
+        published_ts = article.get("published_ts")
+        if isinstance(published_ts, pd.Timestamp):
+            published_ts = published_ts.to_pydatetime()
+        if isinstance(published_ts, datetime):
+            published_str = published_ts.strftime("%Y-%m-%d %H:%M")
+        else:
+            published_str = end_dt.strftime("%Y-%m-%d %H:%M")
+
+        label = article.get("sentiment_label") or "neutral"
+        score_raw = article.get("sentiment_score", 0.0)
+        try:
+            score = float(score_raw)
+        except (TypeError, ValueError):
+            score = 0.0
+
+        results.append(
+            NewsArticle(
+                title=article.get("title", ""),
+                summary=article.get("summary", ""),
+                sentiment_label=label,
+                sentiment_score=score,
+                published=published_str,
+                link=article.get("link") or None,
+            )
+        )
+
+    return results
 
 @app.get("/market-overview", response_model=MarketOverviewResponse)
 async def market_overview():
